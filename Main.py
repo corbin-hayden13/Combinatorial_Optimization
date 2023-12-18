@@ -100,17 +100,26 @@ def combo_optimization():
 def test_combo_optimization():
     rl_opt = RLOptimizer(max_column=41)
     ga_opt = GAOptimizer(max_column=41)
-    rl_opt.load_test_data(test_size=1000, min_bound=-19000, max_bound=19000)
+    rl_opt.load_test_data(test_size=1000, min_bound=-22000, max_bound=11000)
     # rl_opt.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
-    best_rl_individual, params = rl_opt.predict(num_steps=1000,
-                                                hyper_parameters={"return_default_params": True, "max_lots": 7})
+    hyper_parameters = {
+        "return_default_params": True,
+        "max_lots": 6,
+        "file_name": "rl_six_lots_actual",
+    }
+    best_rl_individual, params = rl_opt.predict(num_steps=100,
+                                                hyper_parameters=hyper_parameters)
+
+    print(f"**  RL Solution: {evaluate_individual(best_rl_individual, params['row_vals'])}")
 
     hyper_parameters = {
         "max_lots": params["max_lots"],
         "row_vals": params["row_vals"],
         "target_vals": params["target_val"],
-        "number_generations": 50,
+        "number_generations": 20,
         "verbose": params["verbose"],
+        "individual_mutation_chance": 0.3,
+        "gene_mutation_chance": 0.15,
     }
 
     best_individual = ga_opt.optimize_from(best_rl_individual, hyper_parameters=hyper_parameters)
