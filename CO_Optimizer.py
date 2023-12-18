@@ -8,6 +8,14 @@ grain_flow_path = "EnviroSpec_Vision/2023_Post_Low_Carbon_grain_flow_impact_calc
 wheat_supply_path = "EnviroSpec_Vision/Indigo 2023_Wheat_Airly_Summary.xlsx"
 
 
+def scaled_sigmoid(score, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
+    """
+    k_steepness: Closer to 0, more gradual approach to min / max is to accommodate for very high values
+    """
+    sigmoid = max_bound / (1 + np.exp(-k_steepness * (score - x0_sigmoid_midpoint)))
+    return (np.abs(max_bound) + np.abs(min_bound)) * (sigmoid / max_bound) + min_bound
+
+
 def evaluate_individual(individual, actual_values):
     ret_dict = {}
 
@@ -75,12 +83,15 @@ def fitness(row_vals, individual, target_val):
             fitness_dict[label] = row_vals[index]
 
     combo_scores = [target_val - fitness_dict[key] for key in fitness_dict.keys()]
-    negative_mod = 100 * sum([-gen_mod if score <= 0 else gen_mod for score in combo_scores])
+    negative_mod = sum([-gen_mod if score <= 0 else gen_mod for score in combo_scores])
     euclidean_norm = np.linalg.norm(combo_scores)
 
-    return (2 * (1 / (euclidean_norm + gen_mod))) +\
-           (1.5 * (1 / (len(row_vals) / len(fitness_dict.keys()) + gen_mod))) + \
-           (3 * negative_mod)
+    sigmoid_variance_range = 1.99
+
+    return (2 * (1 / (euclidean_norm + gen_mod))) + \
+           (1 * (1 / (len(row_vals) / len(fitness_dict.keys()) + gen_mod))) + \
+           (-1.45 * negative_mod) - (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range,
+                                                    max_bound=sigmoid_variance_range, k_steepness=0.000001))
 
 
 def fit_population(row_vals, population, target_val):

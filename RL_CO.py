@@ -3,19 +3,14 @@ from gymnasium.spaces.box import Box
 from gymnasium.spaces.multi_discrete import MultiDiscrete
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 import random
 import numpy as np
 from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path, make_population,\
-     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual
+     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid
 
 
-def scaled_sigmoid(score, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
-    """
-    k_steepness: Closer to 0, more gradual approach to min / max is to accommodate for very high values
-    """
-    sigmoid = max_bound / (1 + np.exp(-k_steepness * (score - x0_sigmoid_midpoint)))
-    return (np.abs(max_bound) + np.abs(min_bound)) * (sigmoid / max_bound) + min_bound
+global solution
 
 
 def inverse_scaled_sigmoid(sigmoid, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
@@ -30,11 +25,11 @@ def unpack_scaled_sigmoids(sigmoid_vals, min_bound=-10, max_bound=10, k_steepnes
 
 def scaled_sigmoid_bin(row_vals, bins):
     normalized_data = [scaled_sigmoid(val, min_bound=-1, max_bound=1) for val in row_vals]
-    return np.digitize(normalized_data, np.linspace(-1, 1, bins)), normalized_data
+    return np.digitize(normalized_data, np.linspace(-1, 1, bins - 1)) - 1, normalized_data
 
 
 def linear_bin(row_vals, bins):
-    return np.digitize(row_vals, np.linspace(np.min(row_vals), np.max(row_vals), bins)),
+    return np.digitize(row_vals, np.linspace(np.min(row_vals), np.max(row_vals), bins - 1)) - 1,
 
 
 def bin_data(row_vals, bins=10, bin_algorithm="sigmoid"):
@@ -101,7 +96,12 @@ class RLAlgorithm(gymnasium.Env):
         self.previous_score = 0
         self.last_action = [0, 0]
 
+    def seed(self, seed=None):
+        self.np_random, seed = gymnasium.utils.seeding.np_random(seed)
+        return [seed]
+
     def step(self, action):
+        global solution
         bin_num, new_combo_index = action
 
         valid_inds = [a for a in range(len(self.binned_data)) if self.binned_data[a] == bin_num]
@@ -120,6 +120,7 @@ class RLAlgorithm(gymnasium.Env):
             exit(-1)
 
         self.individual[field_ind] = (self.individual[field_ind][0], new_combo_index)
+        solution = self.individual
 
         curr_fitness = fitness(self.row_vals, self.individual, self.target_val)
         if np.array_equal(action, self.last_action): curr_fitness -= 1
@@ -136,7 +137,7 @@ class RLAlgorithm(gymnasium.Env):
             print(f"Chosen Action:      {action}")
             print(f"Current Fitness:    {curr_fitness}")
             print(f"Previous Score:     {self.previous_score}")
-            # print(f"Current State:      {self.state}")
+            print(f"Current State:      {self.state}")
             print(f"Current Individual: {self.individual}")
 
         return self.state, self.previous_score, done, truncated, info
@@ -154,6 +155,23 @@ class RLAlgorithm(gymnasium.Env):
 
     def render(self, mode='console'):
         pass  # Optional
+
+
+def make_env(env_rank, hyper_parameters, env_seed=42):
+    def _init():
+        env = RLAlgorithm(hyper_parameters["row_vals"], hyper_parameters["max_lots"],
+                          target_val=hyper_parameters["target_val"], bins=hyper_parameters["number_bins"],
+                          bin_algorithm=hyper_parameters["bin_method"], verbose=hyper_parameters["verbose"])
+        env.seed(env_seed + env_rank)
+        return env
+
+    return _init
+
+
+def vectorize_envs(hyper_parameters, cores=8):
+    env_inits = [make_env(a, hyper_parameters) for a in range(cores)]
+    envs = [_init() for _init in env_inits]
+    return SubprocVecEnv(env_inits), envs
 
 
 class RLCallback(BaseCallback):
@@ -178,14 +196,19 @@ class RLOptimizer(Optimizer):
             "max_lots": 5,
             "target_val": 0,
             "number_bins": 10,
-            "learning_rate": 0.00025,
-            "max_steps": 100000,
-            "multithreaded": True,
+            "num_environments": 8,
             "bin_method": "sigmoid",
             "verbose": False,
             "trained": False,
             "file_name": "rl_co_model",
             "return_default_params": False,
+            # PPO best practices: https://github.com/EmbersArc/PPO/blob/master/best-practices-ppo.md
+            "batch_size": 128,  # Typical Discrete [32, 512]
+            "learning_rate": 2.5e-4,  # Typical [1e-5, 1e-3]
+            "num_epochs": 7,  # Typical [3, 10]
+            "max_steps": 5e6,  # Typical [5e5, 1e7]
+            "entropy": 0.0,  # ent_coef, increase -> incentivizes diverse actions
+            "epsilon": 0.2,  # clip_range, increase -> more drastic changes per update
         }
 
     def __manage_test_data(self):
@@ -216,14 +239,18 @@ class RLOptimizer(Optimizer):
 
         self.default_parameters["row_vals"] = data
 
-        rl_alg = RLAlgorithm(data, self.default_parameters["max_lots"], target_val=self.default_parameters["target_val"],
-                             bins=self.default_parameters["number_bins"], bin_algorithm=self.default_parameters["bin_method"],
-                             verbose=self.default_parameters["verbose"])
+        if self.default_parameters["num_environments"] > 1:
+            vectorized_envs, env_objs = vectorize_envs(self.default_parameters,
+                                                       cores=self.default_parameters["num_environments"])
+        else:
+            vectorized_envs = make_env(0, self.default_parameters)
+            env_objs = vectorized_envs()
 
-        return rl_alg, RLCallback()
-        
+        return vectorized_envs, env_objs, RLCallback()
+
     def predict(self, num_steps=100, hyper_parameters=None):
-        rl_alg, callback = self.__setup_params(hyper_parameters=hyper_parameters)
+        hyper_parameters["num_environments"] = 1
+        _, rl_alg, callback = self.__setup_params(hyper_parameters=hyper_parameters)
         model = PPO.load(self.default_parameters["file_name"])
         observation, info = rl_alg.reset()
 
@@ -240,15 +267,18 @@ class RLOptimizer(Optimizer):
         return rl_alg.individual,
 
     def optimize_for(self, hyper_parameters=None):
-        rl_alg, callback = self.__setup_params(hyper_parameters=hyper_parameters)
+        vectorized_envs, env_objs, callback = self.__setup_params(hyper_parameters=hyper_parameters)
 
-        model = PPO("MlpPolicy", rl_alg, learning_rate=self.default_parameters["learning_rate"],
-                    verbose=1 if self.default_parameters["verbose"] else 0)
+        model = PPO("MlpPolicy", vectorized_envs, verbose=1,
+                    batch_size=self.default_parameters["batch_size"], n_epochs=self.default_parameters["num_epochs"],
+                    ent_coef=self.default_parameters["entropy"], clip_range=self.default_parameters["epsilon"],
+                    learning_rate=self.default_parameters["learning_rate"])
         model.learn(total_timesteps=self.default_parameters["max_steps"], callback=callback)
         model.save(self.default_parameters["file_name"])
 
-        if self.default_parameters["return_default_params"]: return rl_alg.individual, self.default_parameters
-        return rl_alg.individual,
+        if self.default_parameters["return_default_params"]:
+            return [env.individual for env in env_objs], self.default_parameters
+        else: [env.individual for env in env_objs],
 
 
 def load_predict():
@@ -266,22 +296,36 @@ def load_predict():
 
 def train_six_lots():
     rl_opt = RLOptimizer()
-    rl_opt.load_test_data(test_size=200)
+    # rl_opt.load_test_data(test_size=100, min_bound=-20000, max_bound=11000, percent_negative=0.35)
+    rl_opt.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
 
     hyper_parameters = {
         "max_lots": 6,
-        "max_steps": 2**12,
-        "verbose": True,
-        "file_name": "rl_six_lots",
+        "max_steps": 6.5e5,
+        "entropy": 0.021,
+        "epsilon": 0.3,
+        "batch_size": 8,
+        "learning_rate": 1e-5,
+        "verbose": False,
+        "num_environments": 16,
+        "file_name": "rl_six_lots_actual",
         "return_default_params": True,
-        "learning_rate": 0.00025,
     }
 
-    best_individual, params = rl_opt.optimize_for(hyper_parameters=hyper_parameters)
+    best_individuals, params = rl_opt.optimize_for(hyper_parameters=hyper_parameters)
+    best_individual = best_individuals[np.argmax([fitness(params["row_vals"], individual, params["target_val"])
+                                                  for individual in best_individuals])]
     print(f"**  Best Individual: {evaluate_individual(best_individual, params['row_vals'])}")
+
+
+def test_cuda():
+    import torch
+
+    print(torch.cuda.is_available())
 
 
 if __name__ == "__main__":
     # load_predict()
     train_six_lots()
+    # test_cuda()
     
