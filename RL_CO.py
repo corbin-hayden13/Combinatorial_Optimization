@@ -7,7 +7,8 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 import random
 import numpy as np
 from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path, make_population,\
-     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid
+     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid,\
+     greatest_closest_power
 
 
 global solution
@@ -41,17 +42,28 @@ def bin_data(row_vals, bins=10, bin_algorithm="sigmoid"):
     return algorithms[bin_algorithm](row_vals, bins)
 
 
-def determine_new_state(individual, max_lots, row_vals, target_val, verbose=False):
+def determine_new_state(individual, row_vals, target_val, target_size, verbose=False):
     """
     One vector representing the following scores:
-     - [combination sums]: Length == # Lots
-     - [number of fields per lot]: Length == # Lots
      - # of lots
      - Score of the individual
+     - Variance of combo sums
+     - Maximum sum
+     - Minimum sum
+     - Count of positive sums
+     - (Deprecated) [number of fields per lot]: Length == # Lots
+     - (Deprecated) [combination sums]: Length == # Lots
     """
+    lot_sums = [sums for _, sums in evaluate_individual(individual, row_vals).items()]
     unique_lots, lot_counts = np.unique(np.array(individual)[:, 1], return_counts=True)
-    combo_sums = []
-    for combo_ind in unique_lots:
+    normalized_state = [len(unique_lots), fitness(row_vals, individual, target_val),
+                        np.var(lot_sums), np.max(lot_sums), np.min(lot_sums),
+                        sum([1 for combo_sum in lot_sums if combo_sum > 0])]
+
+    # normalized_state = [scaled_sigmoid(feature, min_bound=-100, max_bound=100, k_steepness=0.000001)
+    #                     for feature in normalized_state]
+
+    """ for combo_ind in unique_lots:
         combo_sum = 0
         for a in range(len(individual)):
             if individual[a][1] == combo_ind:
@@ -62,16 +74,13 @@ def determine_new_state(individual, max_lots, row_vals, target_val, verbose=Fals
     combo_sums.extend([np.inf for _ in range(max_lots - len(combo_sums))])
 
     combo_sums.extend(list(lot_counts))
-    combo_sums.extend([0 for _ in range(2 * max_lots - len(combo_sums))])
+    combo_sums.extend([0 for _ in range(2 * max_lots - len(combo_sums))]) """
 
-    combo_sums.append(len(unique_lots))
-    combo_sums.append(fitness(row_vals, individual, target_val))
-
-    if len(combo_sums) != 2 * max_lots + 2:
-        print(f"Combo Sums is not right length: {combo_sums}")
+    if len(normalized_state) != target_size:
+        print(f"Combo Sums {len(normalized_state)} != {target_size}: {normalized_state}")
         exit(-1)
 
-    return np.array(combo_sums, dtype=np.float64)
+    return np.array(normalized_state, dtype=np.float64)
 
 
 class RLAlgorithm(gymnasium.Env):
@@ -85,13 +94,13 @@ class RLAlgorithm(gymnasium.Env):
         self.verbose = verbose
 
         self.action_space = MultiDiscrete([self.bins, self.max_lots])
-        # Combined vectors and scalars into one vector as following:
-        # [combo sums] + [combo sizes] + # combos + score
-        observation_size = 2 * self.max_lots + 2
-        self.observation_space = Box(low=-np.inf, high=np.inf, shape=(observation_size,), dtype=np.float64)
+        # See determine_new_state() comments for feature description
+        self.observation_size = 6
+        self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float64)
 
         self.individual = make_individual(row_vals, max_lots)
-        self.state = determine_new_state(self.individual, self.max_lots, self.row_vals, self.target_val, self.verbose)
+        self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
+                                         verbose=self.verbose)
         self.binned_data, self.sigmoid_vals = bin_data(row_vals, bin_algorithm=bin_algorithm)
         self.previous_score = 0
         self.last_action = [0, 0]
@@ -127,7 +136,8 @@ class RLAlgorithm(gymnasium.Env):
         self.last_action = action
 
         self.previous_score = curr_fitness - self.previous_score
-        self.state = determine_new_state(self.individual, self.max_lots, self.row_vals, self.target_val, self.verbose)
+        self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
+                                         verbose=self.verbose)
 
         done = False
         truncated = False
@@ -145,7 +155,8 @@ class RLAlgorithm(gymnasium.Env):
     def reset(self, seed=42):
         random.seed(seed)
         self.individual = make_individual(self.row_vals, self.max_lots)
-        self.state = determine_new_state(self.individual, self.max_lots, self.row_vals, self.target_val)
+        self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
+                                         verbose=self.verbose)
         self.binned_data, self.sigmoid_vals = bin_data(self.row_vals, bin_algorithm="sigmoid")
         self.previous_score = 0
 
@@ -292,40 +303,4 @@ def load_predict():
     }
     best_individual = rl_opt.predict(hyper_parameters=hyper_parameters)
     print(f"**  Best Individual: {evaluate_individual(best_individual, rl_opt.vectorize_column(col=37))}")
-
-
-def train_six_lots():
-    rl_opt = RLOptimizer()
-    # rl_opt.load_test_data(test_size=100, min_bound=-20000, max_bound=11000, percent_negative=0.35)
-    rl_opt.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
-
-    hyper_parameters = {
-        "max_lots": 6,
-        "max_steps": 6.5e5,
-        "entropy": 0.021,
-        "epsilon": 0.3,
-        "batch_size": 8,
-        "learning_rate": 1e-5,
-        "verbose": False,
-        "num_environments": 16,
-        "file_name": "rl_six_lots_actual",
-        "return_default_params": True,
-    }
-
-    best_individuals, params = rl_opt.optimize_for(hyper_parameters=hyper_parameters)
-    best_individual = best_individuals[np.argmax([fitness(params["row_vals"], individual, params["target_val"])
-                                                  for individual in best_individuals])]
-    print(f"**  Best Individual: {evaluate_individual(best_individual, params['row_vals'])}")
-
-
-def test_cuda():
-    import torch
-
-    print(torch.cuda.is_available())
-
-
-if __name__ == "__main__":
-    # load_predict()
-    train_six_lots()
-    # test_cuda()
     

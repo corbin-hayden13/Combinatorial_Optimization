@@ -8,6 +8,14 @@ grain_flow_path = "EnviroSpec_Vision/2023_Post_Low_Carbon_grain_flow_impact_calc
 wheat_supply_path = "EnviroSpec_Vision/Indigo 2023_Wheat_Airly_Summary.xlsx"
 
 
+def greatest_closest_power(target_val, power_of=2):
+    closest_val = power_of
+    while target_val > closest_val * power_of:
+        closest_val *= power_of
+
+    return closest_val
+
+
 def scaled_sigmoid(score, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
     """
     k_steepness: Closer to 0, more gradual approach to min / max is to accommodate for very high values
@@ -68,11 +76,11 @@ def clone_individual(individual, pop_size=100):
 
 def fitness(row_vals, individual, target_val):
     """
-    What's being rewarded?
-     - euclidean norm of combos
-     - more lots than fewer lots
-     - more negative scores than positive scores
-     - variance of sums of lots
+    What's being measured:
+     - Euclidean Norm of combination sums: A higher norm => lower value
+     - Number of lots being used: Rewarding more lots being used than less available
+     - The number of positive sums: Penalizing high numbers of positive values
+     - Scaled sigmoid range of the variance of the scores: Penalize higher variance
     """
     gen_mod = 1e-6
     fitness_dict = {}
@@ -83,15 +91,15 @@ def fitness(row_vals, individual, target_val):
             fitness_dict[label] = row_vals[index]
 
     combo_scores = [target_val - fitness_dict[key] for key in fitness_dict.keys()]
-    negative_mod = sum([-gen_mod if score <= 0 else gen_mod for score in combo_scores])
+    positive_value_count = sum([1 for score in combo_scores if score < 0])
     euclidean_norm = np.linalg.norm(combo_scores)
 
-    sigmoid_variance_range = 1.99
+    sigmoid_variance_range = 2.5
 
-    return (2 * (1 / (euclidean_norm + gen_mod))) + \
+    return (1.75 * (1 / (euclidean_norm + gen_mod))) + \
            (1 * (1 / (len(row_vals) / len(fitness_dict.keys()) + gen_mod))) + \
-           (-1.45 * negative_mod) - (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range,
-                                                    max_bound=sigmoid_variance_range, k_steepness=0.000001))
+           (2.15 * positive_value_count) - (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range,
+                                            max_bound=sigmoid_variance_range, k_steepness=0.00001))
 
 
 def fit_population(row_vals, population, target_val):
