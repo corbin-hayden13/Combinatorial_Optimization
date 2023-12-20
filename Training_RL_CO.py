@@ -32,21 +32,22 @@ def train_n_lots():
     test_size = 200
 
     rl_opt = RLOptimizer()
-    rl_opt.load_test_data(test_size=test_size, min_bound=-22000, max_bound=22000, percent_negative=0.5)
+    rl_opt.load_test_data(test_size=test_size, min_bound=-25000, max_bound=25000, percent_negative=0.5)
     # rl_opt.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
 
     hyper_parameters = {
         "max_lots": 11,
-        "max_steps": 6.5e5,
-        "entropy": 0.009,
-        "epsilon": 0.2,
+        "max_steps": 6.5e6,
+        "entropy": 0.9,
+        "epsilon": 0.145,
         "batch_size": greatest_closest_power(test_size),
-        "learning_rate": 2.5e-4,
-        "gae_lambda": 0.88,  # 0 - 1 as current or future reward prioritized
+        "learning_rate": 1e-4,
+        "gae_lambda": 0.85,  # 0 - 1 as current or future reward prioritized
         "normalize_advantage": True,
         "verbose": False,
         "num_environments": 16,
         "file_name": "rl_n_lots_realistic_distribution",
+        "tensorboard_log": "./rl_n_lots_equal_distribution_tb_log/",
         "return_default_params": True,
     }
 

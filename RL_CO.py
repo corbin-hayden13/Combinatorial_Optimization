@@ -133,10 +133,9 @@ class RLAlgorithm(gymnasium.Env):
         solution = self.individual
 
         curr_fitness = fitness(self.row_vals, self.individual, self.target_val)
-        if np.array_equal(action, self.last_action): curr_fitness -= 1
+        if np.array_equal(action, self.last_action): curr_fitness -= 30
         self.last_action = action
 
-        self.previous_score = curr_fitness - self.previous_score
         self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
                                          verbose=self.verbose)
 
@@ -151,7 +150,7 @@ class RLAlgorithm(gymnasium.Env):
             print(f"Current State:      {self.state}")
             print(f"Current Individual: {self.individual}")
 
-        return self.state, self.previous_score, done, truncated, info
+        return self.state, curr_fitness, done, truncated, info
 
     def reset(self, seed=42):
         random.seed(seed)
@@ -213,6 +212,7 @@ class RLOptimizer(Optimizer):
             "verbose": False,
             "trained": False,
             "file_name": "rl_co_model",
+            "tensorboard_log": "./rl_co_model_tb_log/",
             "return_default_params": False,
             # PPO best practices: https://github.com/EmbersArc/PPO/blob/master/best-practices-ppo.md
             "batch_size": 128,  # Typical Discrete [32, 512]
@@ -287,7 +287,8 @@ class RLOptimizer(Optimizer):
                     batch_size=self.default_parameters["batch_size"], n_epochs=self.default_parameters["num_epochs"],
                     ent_coef=self.default_parameters["entropy"], clip_range=self.default_parameters["epsilon"],
                     learning_rate=self.default_parameters["learning_rate"], gae_lambda=self.default_parameters["gae_lambda"],
-                    normalize_advantage=self.default_parameters["normalize_advantage"])
+                    normalize_advantage=self.default_parameters["normalize_advantage"],
+                    tensorboard_log=self.default_parameters["tensorboard_log"])
         model.learn(total_timesteps=self.default_parameters["max_steps"], callback=callback)
         model.save(self.default_parameters["file_name"])
 

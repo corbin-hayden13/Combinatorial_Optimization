@@ -96,14 +96,14 @@ def fitness(row_vals, individual, target_val):
     positive_value_count = sum([-1 for score in combo_scores if score > 0])
     euclidean_norm = np.linalg.norm(combo_scores)
 
-    sigmoid_variance_range = 1.15
+    sigmoid_variance_range = 2
 
     return (3.2 * (1 / (euclidean_norm + gen_mod))) + \
            (1 * (1 / (len(row_vals) / len(fitness_dict.keys()) + gen_mod))) + \
-           (1.325 * positive_value_count) - \
+           (3 * positive_value_count) - \
            (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range, max_bound=sigmoid_variance_range,
                            k_steepness=0.0001)) + \
-           (2.35 * (1 / (np.std(combo_scores) + gen_mod)))
+           (1 * (1 / (np.std(combo_scores) + gen_mod)))
            # (-2 * scaled_sigmoid(1 / (np.mean(combo_scores) + gen_mod), min_bound=-sigmoid_variance_range,
            #                      max_bound=sigmoid_variance_range, k_steepness=0.00001))
 
