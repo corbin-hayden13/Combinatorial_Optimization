@@ -4,6 +4,7 @@ from gymnasium.spaces.multi_discrete import MultiDiscrete
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from scipy.stats import skew
 import random
 import numpy as np
 from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path, make_population,\
@@ -49,20 +50,26 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
      - Score of the individual
      - Variance of combo sums
      - Standard Deviation of combo sums
+     - Average distance of sums from target value
+     - Skewness of combination sums
      - Maximum sum
      - Minimum sum
      - Count of positive sums
+     - Count of negative sums
      - (Deprecated) [number of fields per lot]: Length == # Lots
      - (Deprecated) [combination sums]: Length == # Lots
     """
     lot_sums = [sums for _, sums in evaluate_individual(individual, row_vals).items()]
     unique_lots, lot_counts = np.unique(np.array(individual)[:, 1], return_counts=True)
     normalized_state = [len(unique_lots), fitness(row_vals, individual, target_val),
-                        np.var(lot_sums), np.std(lot_sums), np.max(lot_sums), np.min(lot_sums),
-                        sum([1 for combo_sum in lot_sums if combo_sum > 0])]
+                        np.var(lot_sums), np.std(lot_sums), np.mean([target_val - lot_sum for lot_sum in lot_sums]),
+                        skew(lot_sums), np.max(lot_sums), np.min(lot_sums),
+                        sum([1 for lot_sum in lot_sums if lot_sum > 0]),
+                        sum([1 for lot_sum in lot_sums if lot_sum <= 0])]
 
-    # normalized_state = [scaled_sigmoid(feature, min_bound=-100, max_bound=100, k_steepness=0.000001)
-    #                     for feature in normalized_state]
+    min_data = min(normalized_state)
+    max_data = max(normalized_state)
+    normalized_state = (np.array(normalized_state) - min_data) / (max_data - min_data + 1e-6)  # Avoid x / 0
 
     """ for combo_ind in unique_lots:
         combo_sum = 0
@@ -96,7 +103,7 @@ class RLAlgorithm(gymnasium.Env):
 
         self.action_space = MultiDiscrete([self.bins, self.max_lots])
         # See determine_new_state() comments for feature description
-        self.observation_size = 7
+        self.observation_size = 10
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float64)
 
         self.individual = make_individual(row_vals, max_lots)
@@ -210,6 +217,7 @@ class RLOptimizer(Optimizer):
             "num_environments": 8,
             "bin_method": "sigmoid",
             "verbose": False,
+            "print_policy": False,
             "trained": False,
             "file_name": "rl_co_model",
             "tensorboard_log": "./rl_co_model_tb_log/",
@@ -289,6 +297,7 @@ class RLOptimizer(Optimizer):
                     learning_rate=self.default_parameters["learning_rate"], gae_lambda=self.default_parameters["gae_lambda"],
                     normalize_advantage=self.default_parameters["normalize_advantage"],
                     tensorboard_log=self.default_parameters["tensorboard_log"])
+        if self.default_parameters["print_policy"]: print(model.policy)
         model.learn(total_timesteps=self.default_parameters["max_steps"], callback=callback)
         model.save(self.default_parameters["file_name"])
 
