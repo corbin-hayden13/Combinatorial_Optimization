@@ -81,6 +81,8 @@ def fitness(row_vals, individual, target_val):
      - Number of lots being used: Rewarding more lots being used than less available
      - The number of positive sums: Penalizing high numbers of positive values
      - Scaled sigmoid range of the variance of the scores: Penalize higher variance
+     - Standard Deviation of data
+     - (Deprecated) Average of sums: Reward more negative average
     """
     gen_mod = 1e-6
     fitness_dict = {}
@@ -91,15 +93,19 @@ def fitness(row_vals, individual, target_val):
             fitness_dict[label] = row_vals[index]
 
     combo_scores = [target_val - fitness_dict[key] for key in fitness_dict.keys()]
-    positive_value_count = sum([1 for score in combo_scores if score < 0])
+    positive_value_count = sum([-1 for score in combo_scores if score > 0])
     euclidean_norm = np.linalg.norm(combo_scores)
 
-    sigmoid_variance_range = 2.5
+    sigmoid_variance_range = 1.15
 
-    return (1.75 * (1 / (euclidean_norm + gen_mod))) + \
+    return (3.2 * (1 / (euclidean_norm + gen_mod))) + \
            (1 * (1 / (len(row_vals) / len(fitness_dict.keys()) + gen_mod))) + \
-           (2.15 * positive_value_count) - (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range,
-                                            max_bound=sigmoid_variance_range, k_steepness=0.00001))
+           (1.325 * positive_value_count) - \
+           (scaled_sigmoid(np.var(combo_scores), min_bound=-sigmoid_variance_range, max_bound=sigmoid_variance_range,
+                           k_steepness=0.0001)) + \
+           (2.35 * (1 / (np.std(combo_scores) + gen_mod)))
+           # (-2 * scaled_sigmoid(1 / (np.mean(combo_scores) + gen_mod), min_bound=-sigmoid_variance_range,
+           #                      max_bound=sigmoid_variance_range, k_steepness=0.00001))
 
 
 def fit_population(row_vals, population, target_val):

@@ -48,6 +48,7 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
      - # of lots
      - Score of the individual
      - Variance of combo sums
+     - Standard Deviation of combo sums
      - Maximum sum
      - Minimum sum
      - Count of positive sums
@@ -57,7 +58,7 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
     lot_sums = [sums for _, sums in evaluate_individual(individual, row_vals).items()]
     unique_lots, lot_counts = np.unique(np.array(individual)[:, 1], return_counts=True)
     normalized_state = [len(unique_lots), fitness(row_vals, individual, target_val),
-                        np.var(lot_sums), np.max(lot_sums), np.min(lot_sums),
+                        np.var(lot_sums), np.std(lot_sums), np.max(lot_sums), np.min(lot_sums),
                         sum([1 for combo_sum in lot_sums if combo_sum > 0])]
 
     # normalized_state = [scaled_sigmoid(feature, min_bound=-100, max_bound=100, k_steepness=0.000001)
@@ -95,7 +96,7 @@ class RLAlgorithm(gymnasium.Env):
 
         self.action_space = MultiDiscrete([self.bins, self.max_lots])
         # See determine_new_state() comments for feature description
-        self.observation_size = 6
+        self.observation_size = 7
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float64)
 
         self.individual = make_individual(row_vals, max_lots)
@@ -220,6 +221,8 @@ class RLOptimizer(Optimizer):
             "max_steps": 5e6,  # Typical [5e5, 1e7]
             "entropy": 0.0,  # ent_coef, increase -> incentivizes diverse actions
             "epsilon": 0.2,  # clip_range, increase -> more drastic changes per update
+            "gae_lambda": 0.15,  # 0 - 1 as current or future reward prioritized
+            "normalize_advantage": False,
         }
 
     def __manage_test_data(self):
@@ -283,7 +286,8 @@ class RLOptimizer(Optimizer):
         model = PPO("MlpPolicy", vectorized_envs, verbose=1,
                     batch_size=self.default_parameters["batch_size"], n_epochs=self.default_parameters["num_epochs"],
                     ent_coef=self.default_parameters["entropy"], clip_range=self.default_parameters["epsilon"],
-                    learning_rate=self.default_parameters["learning_rate"])
+                    learning_rate=self.default_parameters["learning_rate"], gae_lambda=self.default_parameters["gae_lambda"],
+                    normalize_advantage=self.default_parameters["normalize_advantage"])
         model.learn(total_timesteps=self.default_parameters["max_steps"], callback=callback)
         model.save(self.default_parameters["file_name"])
 
