@@ -516,8 +516,8 @@ def optimize_test_data():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # time_trial()
     # plot()
-    optimize_test_data()
+    # optimize_test_data()
 

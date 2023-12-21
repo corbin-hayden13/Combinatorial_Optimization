@@ -105,21 +105,22 @@ def test_combo_optimization():
     hyper_parameters = {
         "return_default_params": True,
         "max_lots": 6,
-        "file_name": "rl_n_lots_equal_distribution",
+        "file_name": "rl_n_lots_realistic_distribution",
     }
     best_rl_individual, params = rl_opt.predict(num_steps=16,
                                                 hyper_parameters=hyper_parameters)
 
-    print(f"**  RL Solution: {evaluate_individual(best_rl_individual, params['row_vals'])}")
+    print(f"**  RL Individual: {best_rl_individual}")
+    print(f"**  RL Solution:   {evaluate_individual(best_rl_individual, params['row_vals'])}")
 
     hyper_parameters = {
         "max_lots": params["max_lots"],
         "row_vals": params["row_vals"],
         "target_vals": params["target_val"],
-        "number_generations": 85,
+        "number_generations": 25,
         "verbose": params["verbose"],
         "individual_mutation_chance": 0.3,
-        "gene_mutation_chance": 1,
+        "gene_mutation_chance": 0.15,
     }
 
     best_individual = ga_opt.optimize_from(best_rl_individual, hyper_parameters=hyper_parameters)

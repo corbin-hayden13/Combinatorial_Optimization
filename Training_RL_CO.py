@@ -37,12 +37,12 @@ def train_n_lots():
 
     hyper_parameters = {
         "max_lots": 11,
-        "max_steps": 6.5e6,
-        "entropy": 0.9,
-        "epsilon": 0.145,
+        "max_steps": 8.5e6,
+        "entropy": 0.925,
+        "epsilon": 0.31,  # This is clip_range
         "batch_size": greatest_closest_power(test_size),
-        "learning_rate": 1e-4,
-        "gae_lambda": 0.85,  # 0 - 1 as current or future reward prioritized
+        "learning_rate": 6.25e-3,
+        "gae_lambda": 0.975,  # 0 - 1 as current or future reward prioritized
         "normalize_advantage": True,
         "verbose": False,
         "num_environments": 16,

@@ -4,15 +4,15 @@ from gymnasium.spaces.multi_discrete import MultiDiscrete
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from scipy.stats import skew
 import random
 import numpy as np
+import torch.nn as nn
+import torch.nn.functional as F
 from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path, make_population,\
      make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid,\
      greatest_closest_power
-
-
-global solution
 
 
 def inverse_scaled_sigmoid(sigmoid, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
@@ -67,28 +67,30 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
                         sum([1 for lot_sum in lot_sums if lot_sum > 0]),
                         sum([1 for lot_sum in lot_sums if lot_sum <= 0])]
 
-    min_data = min(normalized_state)
-    max_data = max(normalized_state)
-    normalized_state = (np.array(normalized_state) - min_data) / (max_data - min_data + 1e-6)  # Avoid x / 0
-
-    """ for combo_ind in unique_lots:
-        combo_sum = 0
-        for a in range(len(individual)):
-            if individual[a][1] == combo_ind:
-                combo_sum += row_vals[a]
-
-        combo_sums.append(combo_sum)
-
-    combo_sums.extend([np.inf for _ in range(max_lots - len(combo_sums))])
-
-    combo_sums.extend(list(lot_counts))
-    combo_sums.extend([0 for _ in range(2 * max_lots - len(combo_sums))]) """
+    # min_data = min(normalized_state)
+    # max_data = max(normalized_state)
+    # normalized_state = (np.array(normalized_state) - min_data) / (max_data - min_data + 1e-6)  # Avoid x / 0
 
     if len(normalized_state) != target_size:
         print(f"Combo Sums {len(normalized_state)} != {target_size}: {normalized_state}")
         exit(-1)
 
     return np.array(normalized_state, dtype=np.float64)
+
+
+class CustomNeuralNetwork(BaseFeaturesExtractor):
+    def __init__(self, observation_space, features_dim):
+        super(CustomNeuralNetwork, self).__init__(observation_space, features_dim)
+
+        # Example of a more complex network
+        self.layer1 = nn.Linear(observation_space.shape[0], 128)
+        self.layer2 = nn.Linear(128, 128)
+        self.layer3 = nn.Linear(128, features_dim)
+
+    def forward(self, observations):
+        x = F.relu(self.layer1(observations))
+        x = F.relu(self.layer2(x))
+        return self.layer3(x)
 
 
 class RLAlgorithm(gymnasium.Env):
@@ -118,7 +120,6 @@ class RLAlgorithm(gymnasium.Env):
         return [seed]
 
     def step(self, action):
-        global solution
         bin_num, new_combo_index = action
 
         valid_inds = [a for a in range(len(self.binned_data)) if self.binned_data[a] == bin_num]
@@ -137,7 +138,6 @@ class RLAlgorithm(gymnasium.Env):
             exit(-1)
 
         self.individual[field_ind] = (self.individual[field_ind][0], new_combo_index)
-        solution = self.individual
 
         curr_fitness = fitness(self.row_vals, self.individual, self.target_val)
         if np.array_equal(action, self.last_action): curr_fitness -= 30
@@ -176,6 +176,11 @@ class RLAlgorithm(gymnasium.Env):
 
 
 def make_env(env_rank, hyper_parameters, env_seed=42):
+    hyper_parameters["policy_kwargs"] = dict(
+        features_extractor_class=CustomNeuralNetwork,
+        features_extractor_kwargs=dict(features_dim=128)  # This should match the last layer of your network
+    )
+
     def _init():
         env = RLAlgorithm(hyper_parameters["row_vals"], hyper_parameters["max_lots"],
                           target_val=hyper_parameters["target_val"], bins=hyper_parameters["number_bins"],
@@ -231,6 +236,7 @@ class RLOptimizer(Optimizer):
             "epsilon": 0.2,  # clip_range, increase -> more drastic changes per update
             "gae_lambda": 0.15,  # 0 - 1 as current or future reward prioritized
             "normalize_advantage": False,
+            "policy_kwargs": None,
         }
 
     def __manage_test_data(self):
@@ -296,6 +302,7 @@ class RLOptimizer(Optimizer):
                     ent_coef=self.default_parameters["entropy"], clip_range=self.default_parameters["epsilon"],
                     learning_rate=self.default_parameters["learning_rate"], gae_lambda=self.default_parameters["gae_lambda"],
                     normalize_advantage=self.default_parameters["normalize_advantage"],
+                    policy_kwargs=self.default_parameters["policy_kwargs"],
                     tensorboard_log=self.default_parameters["tensorboard_log"])
         if self.default_parameters["print_policy"]: print(model.policy)
         model.learn(total_timesteps=self.default_parameters["max_steps"], callback=callback)
