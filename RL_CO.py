@@ -80,6 +80,23 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
     return np.array(normalized_state, dtype=np.float64)
 
 
+def determine_new_binned_state(individual, row_vals, target_val, num_bins=32, verbose=False):
+    lot_sum_diffs = sorted([target_val - sums for _, sums in evaluate_individual(individual, row_vals).items()])
+    too_small = len(lot_sum_diffs) <= num_bins
+    size_diff = num_bins - len(lot_sum_diffs) if len(lot_sum_diffs) <= num_bins else len(lot_sum_diffs) % num_bins
+    lot_sum_diffs.extend([np.inf for _ in range(size_diff)])
+    vectorized_sum_diffs = np.array(lot_sum_diffs)
+
+    if too_small:
+        pruned_array = vectorized_sum_diffs[vectorized_sum_diffs < np.inf]
+        return (vectorized_sum_diffs - np.mean(pruned_array)) / np.var(pruned_array)
+    else:
+        state_matrix = np.mean(vectorized_sum_diffs.reshape(vectorized_sum_diffs.shape[0] // num_bins, num_bins),
+                               axis=0)
+        pruned_array = state_matrix[state_matrix < np.inf]
+        return (pruned_array - np.mean(pruned_array)) / np.var(pruned_array)
+
+
 class CustomNeuralNetwork(BaseFeaturesExtractor):
     def __init__(self, observation_space, features_dim):
         super(CustomNeuralNetwork, self).__init__(observation_space, features_dim)
@@ -97,7 +114,7 @@ class CustomNeuralNetwork(BaseFeaturesExtractor):
 
 class RLAlgorithm(gymnasium.Env):
     def __init__(self, row_vals, max_lots, target_val=0, bins=10, verbose=False, ga_optimizer=None,
-                 bin_algorithm="linear"):
+                 use_binned_state=True, bin_algorithm="linear"):
         super(RLAlgorithm, self).__init__()
 
         self.max_lots = max_lots
@@ -125,8 +142,12 @@ class RLAlgorithm(gymnasium.Env):
         self.observation_size = 10
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float64)
 
-        self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
-                                         verbose=self.verbose)
+        if use_binned_state:
+            self.state = determine_new_binned_state(self.individual, self.row_vals, self.target_val,
+                                                    verbose=self.verbose)
+        else:
+            self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
+                                             verbose=self.verbose)
         self.binned_data, self.sigmoid_vals = bin_data(row_vals, bin_algorithm=bin_algorithm)
         self.previous_score = 0
         self.last_action = [0, 0]
@@ -205,6 +226,7 @@ def make_env(env_rank, hyper_parameters, env_seed=42):
         env = RLAlgorithm(hyper_parameters["row_vals"], hyper_parameters["max_lots"],
                           target_val=hyper_parameters["target_val"], bins=hyper_parameters["number_bins"],
                           bin_algorithm=hyper_parameters["bin_method"], verbose=hyper_parameters["verbose"],
+                          use_binned_state=hyper_parameters["use_binned_state"],
                           ga_optimizer=hyper_parameters["ga_optimizer"])
         env.seed(env_seed + env_rank)
         return env
@@ -245,6 +267,7 @@ class RLOptimizer(Optimizer):
             "verbose": False,
             "print_policy": False,
             "trained": False,
+            "use_binned_state": True,
             "file_name": "rl_co_model",
             "tensorboard_log": "./rl_co_model_tb_log/",
             "return_default_params": False,

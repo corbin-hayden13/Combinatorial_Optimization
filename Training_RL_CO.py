@@ -47,9 +47,10 @@ def train_n_lots():
         "normalize_advantage": True,
         "verbose": False,
         "num_environments": 16,
-        "file_name": "rl_n_lots_less_values",
-        "tensorboard_log": "./rl_n_lots_lesS_values_tb_log/",
+        "file_name": "rl_n_lots_binned_state",
+        "tensorboard_log": "./rl_n_lots_binned_state/",
         "return_default_params": True,
+        "use_binned_state": True,
     }
 
     best_individuals, params = rl_opt.optimize_for(hyper_parameters=hyper_parameters)
@@ -141,7 +142,7 @@ def train_ga_rl_combo():
 
 
 if __name__ == "__main__":
-    # train_n_lots()
+    train_n_lots()
     # train_on_schedule()
-    train_ga_rl_combo()
+    # train_ga_rl_combo()
 
