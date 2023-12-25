@@ -10,9 +10,8 @@ import random
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path, make_population,\
-     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid,\
-     greatest_closest_power
+from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path,\
+     make_individual, fitness, vector_from_dataframe_column, precision_round, evaluate_individual, scaled_sigmoid
 
 
 def inverse_scaled_sigmoid(sigmoid, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
@@ -61,11 +60,14 @@ def determine_new_state(individual, row_vals, target_val, target_size, verbose=F
     """
     lot_sums = [sums for _, sums in evaluate_individual(individual, row_vals).items()]
     unique_lots, lot_counts = np.unique(np.array(individual)[:, 1], return_counts=True)
-    normalized_state = [len(unique_lots), fitness(row_vals, individual, target_val),
-                        np.var(lot_sums), np.std(lot_sums), np.mean([target_val - lot_sum for lot_sum in lot_sums]),
-                        skew(lot_sums), np.max(lot_sums), np.min(lot_sums),
-                        sum([1 for lot_sum in lot_sums if lot_sum > 0]),
-                        sum([1 for lot_sum in lot_sums if lot_sum <= 0])]
+    normalized_state = np.array([len(unique_lots), fitness(row_vals, individual, target_val),
+                                 np.var(lot_sums), np.std(lot_sums),
+                                 np.mean([target_val - lot_sum for lot_sum in lot_sums]),
+                                 skew(lot_sums), np.max(lot_sums), np.min(lot_sums),
+                                 sum([1 for lot_sum in lot_sums if lot_sum > 0]),
+                                 sum([1 for lot_sum in lot_sums if lot_sum <= 0])])
+
+    normalized_state = (normalized_state - np.mean(normalized_state)) / np.var(normalized_state)
 
     # min_data = min(normalized_state)
     # max_data = max(normalized_state)
@@ -94,7 +96,8 @@ class CustomNeuralNetwork(BaseFeaturesExtractor):
 
 
 class RLAlgorithm(gymnasium.Env):
-    def __init__(self, row_vals, max_lots, target_val=0, bins=10, verbose=False, bin_algorithm="linear"):
+    def __init__(self, row_vals, max_lots, target_val=0, bins=10, verbose=False, ga_optimizer=None,
+                 bin_algorithm="linear"):
         super(RLAlgorithm, self).__init__()
 
         self.max_lots = max_lots
@@ -102,13 +105,26 @@ class RLAlgorithm(gymnasium.Env):
         self.target_val = target_val
         self.bins = bins
         self.verbose = verbose
+        self.individual = make_individual(row_vals, max_lots)
+        if ga_optimizer is None:
+            self.ga_best_individual = None
+
+        else:
+            self.ga_best_individual = ga_optimizer.optimize_from(individual=self.individual, hyper_parameters={
+                "row_vals": np.array(row_vals),
+                "max_lots": max_lots,
+                "target_val": target_val,
+                "number_generations": 350,
+                "individual_mutation_chance": 0.3,
+                "gene_mutation_chance": 0.2,
+                "verbose": True,
+            })
 
         self.action_space = MultiDiscrete([self.bins, self.max_lots])
         # See determine_new_state() comments for feature description
         self.observation_size = 10
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.observation_size,), dtype=np.float64)
 
-        self.individual = make_individual(row_vals, max_lots)
         self.state = determine_new_state(self.individual, self.row_vals, self.target_val, self.observation_size,
                                          verbose=self.verbose)
         self.binned_data, self.sigmoid_vals = bin_data(row_vals, bin_algorithm=bin_algorithm)
@@ -139,7 +155,11 @@ class RLAlgorithm(gymnasium.Env):
 
         self.individual[field_ind] = (self.individual[field_ind][0], new_combo_index)
 
-        curr_fitness = fitness(self.row_vals, self.individual, self.target_val)
+        if self.ga_best_individual is None: curr_fitness = fitness(self.row_vals, self.individual, self.target_val)
+        else:
+            curr_fitness = fitness(self.row_vals, self.individual, self.target_val) - \
+                           fitness(self.row_vals, self.ga_best_individual, self.target_val)
+
         if np.array_equal(action, self.last_action): curr_fitness -= 30
         self.last_action = action
 
@@ -151,11 +171,11 @@ class RLAlgorithm(gymnasium.Env):
         info = {}
 
         if self.verbose:
-            print(f"Chosen Action:      {action}")
+            # print(f"Chosen Action:      {action}")
             print(f"Current Fitness:    {curr_fitness}")
-            print(f"Previous Score:     {self.previous_score}")
-            print(f"Current State:      {self.state}")
-            print(f"Current Individual: {self.individual}")
+            # print(f"Previous Score:     {self.previous_score}")
+            # print(f"Current State:      {self.state}")
+            # print(f"Current Individual: {self.individual}")
 
         return self.state, curr_fitness, done, truncated, info
 
@@ -184,7 +204,8 @@ def make_env(env_rank, hyper_parameters, env_seed=42):
     def _init():
         env = RLAlgorithm(hyper_parameters["row_vals"], hyper_parameters["max_lots"],
                           target_val=hyper_parameters["target_val"], bins=hyper_parameters["number_bins"],
-                          bin_algorithm=hyper_parameters["bin_method"], verbose=hyper_parameters["verbose"])
+                          bin_algorithm=hyper_parameters["bin_method"], verbose=hyper_parameters["verbose"],
+                          ga_optimizer=hyper_parameters["ga_optimizer"])
         env.seed(env_seed + env_rank)
         return env
 
@@ -227,6 +248,7 @@ class RLOptimizer(Optimizer):
             "file_name": "rl_co_model",
             "tensorboard_log": "./rl_co_model_tb_log/",
             "return_default_params": False,
+            "ga_optimizer": None,
             # PPO best practices: https://github.com/EmbersArc/PPO/blob/master/best-practices-ppo.md
             "batch_size": 128,  # Typical Discrete [32, 512]
             "learning_rate": 2.5e-4,  # Typical [1e-5, 1e-3]
@@ -238,6 +260,9 @@ class RLOptimizer(Optimizer):
             "normalize_advantage": False,
             "policy_kwargs": None,
         }
+
+    def __compare_to_ga_reward(self):
+        pass
 
     def __manage_test_data(self):
         try:

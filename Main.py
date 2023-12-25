@@ -100,12 +100,12 @@ def combo_optimization():
 def test_combo_optimization():
     rl_opt = RLOptimizer(max_column=41)
     ga_opt = GAOptimizer(max_column=41)
-    # rl_opt.load_test_data(test_size=1000, min_bound=-22000, max_bound=11000)
+    # rl_opt.load_test_data(test_size=25, min_bound=-22000, max_bound=11000, percent_negative=0.5)
     rl_opt.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
     hyper_parameters = {
         "return_default_params": True,
         "max_lots": 6,
-        "file_name": "rl_n_lots_realistic_distribution",
+        "file_name": "rl_300_test_-25000+25000_0.5_ga_compared",
     }
     best_rl_individual, params = rl_opt.predict(num_steps=16,
                                                 hyper_parameters=hyper_parameters)
@@ -116,15 +116,15 @@ def test_combo_optimization():
     hyper_parameters = {
         "max_lots": params["max_lots"],
         "row_vals": params["row_vals"],
-        "target_vals": params["target_val"],
+        "target_val": params["target_val"],
         "number_generations": 25,
         "verbose": params["verbose"],
         "individual_mutation_chance": 0.3,
-        "gene_mutation_chance": 0.15,
+        "gene_mutation_chance": 0.2,
     }
 
     best_individual = ga_opt.optimize_from(best_rl_individual, hyper_parameters=hyper_parameters)
-    print(f"**  Best Individual: {evaluate_individual(best_individual, params['row_vals'])}")
+    print(f"**  Best GA Individual: {evaluate_individual(best_individual, params['row_vals'])}")
 
 
 # file format as: "EnviroSpec vision EIM yyyy-mm-dd.csv"

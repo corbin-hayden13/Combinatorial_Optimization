@@ -74,6 +74,10 @@ def clone_individual(individual, pop_size=100):
     return [individual for _ in range(pop_size)]
 
 
+def fitness_args_wrapper(*args):
+    return fitness(args[0], args[1], args[2])
+
+
 def fitness(row_vals, individual, target_val):
     """
     What's being measured:
