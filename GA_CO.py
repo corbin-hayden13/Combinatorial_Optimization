@@ -259,7 +259,7 @@ def mutate_population(population, max_lots, min_field_count=-1, individual_mutat
 
 
 def run_genetic_algorithm(vals_to_optimize, max_lots, target_val=0, min_field_count=-1,
-                          population_size=100, num_generations=1000,
+                          population_size=100, min_generations=10, num_generations=1000,
                           individual_mutation_chance=1, gene_mutation_chance=0.5,
                           verbose=False, multithreaded=False, override_population=None):
     if override_population is None: init_population = make_population(vals_to_optimize, max_lots,
@@ -275,7 +275,8 @@ def run_genetic_algorithm(vals_to_optimize, max_lots, target_val=0, min_field_co
                                             individual_mutation_chance=individual_mutation_chance,
                                             gene_mutation_chance=gene_mutation_chance)
         best_individual = max(init_population, key=lambda individual: fitness(vals_to_optimize, individual, target_val))
-        if (np.array([sums for _, sums in evaluate_individual(best_individual, vals_to_optimize).items()]) < 0).all():
+        if (np.array([sums for _, sums in evaluate_individual(best_individual, vals_to_optimize).items()]) < 0).all()\
+                and a >= min_generations:
             if verbose: print(f"Algorithm converged before hitting max generation")
 
             return best_individual
@@ -345,6 +346,7 @@ class GAOptimizer(Optimizer):
             "max_lots": 5,
             "target_val": 0,
             "population_size": 100,
+            "min_generations": 10,
             "number_generations": 500,
             "individual_mutation_chance": 1,
             "gene_mutation_chance": 0.5,
@@ -392,6 +394,7 @@ class GAOptimizer(Optimizer):
                                                 target_val=default_parameters["target_val"],
                                                 min_field_count=-1 if not use_min_fields else min_fields,
                                                 population_size=default_parameters["population_size"],
+                                                min_generations=default_parameters["min_generations"],
                                                 num_generations=default_parameters["number_generations"],
                                                 individual_mutation_chance=default_parameters["individual_mutation_chance"],
                                                 gene_mutation_chance=default_parameters["gene_mutation_chance"],
@@ -446,6 +449,7 @@ def main():
     params_dict = {
         "max_lots": 5,
         "target_val": 0,
+        "min_generations": 3,
         "number_generations": 30,
         "individual_mutation_chance": 0.3,
         "gene_mutation_chance": 0.15,
@@ -502,6 +506,7 @@ def optimize_test_data():
     params_dict = {
         "max_lots": 10,
         "target_val": 0,
+        "min_generations": 3,
         "number_generations": 30,
         "individual_mutation_chance": 0.45,
         "gene_mutation_chance": 0.5,
