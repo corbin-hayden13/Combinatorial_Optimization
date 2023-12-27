@@ -39,10 +39,10 @@ def train_n_lots():
     hyper_parameters = {
         "max_lots": 11,
         "max_steps": 5e5,
-        "entropy": 0.965,
+        "entropy": 0.99,
         "epsilon": 0.375,  # This is clip_range
         "batch_size": greatest_closest_power(test_size),
-        "learning_rate": 6.25e-3,
+        "learning_rate": 6.25e-4,
         "gae_lambda": 0.8,  # 0 - 1 as current or future reward prioritized
         "normalize_advantage": True,
         "verbose": False,
@@ -51,6 +51,7 @@ def train_n_lots():
         "tensorboard_log": "./rl_n_lots_binned_state/",
         "return_default_params": True,
         "use_binned_state": True,
+        "ga_optimizer": GAOptimizer(),
     }
 
     best_individuals, params = rl_opt.optimize_for(hyper_parameters=hyper_parameters)

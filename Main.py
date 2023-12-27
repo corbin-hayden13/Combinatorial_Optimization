@@ -1,6 +1,6 @@
 from GA_CO import GAOptimizer
 from RL_CO import RLOptimizer, scaled_sigmoid
-from CO_Optimizer import grain_flow_path, wheat_supply_path, evaluate_individual
+from CO_Optimizer import grain_flow_path, wheat_supply_path, evaluate_individual, optimize_init_solution
 import numpy as np
 
 
@@ -60,6 +60,15 @@ def score_data(data, weights=None, min_max=None, weighted_average=False, scaled=
         else: ret_dict[key] = float(f"{np.sum(data_vector * default_weights):.{precision}f}")
 
     return ret_dict
+
+
+def test_optimize_init_state():
+    # test_individual = [-6, 6, 7, -7, 8, -8, 10, -10, 1, -1]
+    test_individual = [3414.3241176470615, 10741.626925490193, 10341.393921568633, 2302.466015686273,
+                       -4057.0649647058804, -7462.052215686282, -11301.34425882353, -7044.932803921577,
+                       -3753.3592470588246, -22032.892000000007, 3147.5504766536988, 11677.476999999997,
+                       -1594.277999999995, -1046.7939999999955, 1628.2349999999958, -2084.1659999999974]
+    optimize_init_solution(test_individual, 7, 0)
 
 
 def initial_main():
@@ -132,5 +141,6 @@ def test_combo_optimization():
 # solving a problem (the AI combinatorial optimization problem) can be protected
 if __name__ == "__main__":  # Indexed at 1 for col and row
     # combo_optimization()
-    test_combo_optimization()
+    # test_combo_optimization()
+    test_optimize_init_state()
 

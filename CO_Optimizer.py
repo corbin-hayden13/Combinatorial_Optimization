@@ -8,6 +8,25 @@ grain_flow_path = "EnviroSpec_Vision/2023_Post_Low_Carbon_grain_flow_impact_calc
 wheat_supply_path = "EnviroSpec_Vision/Indigo 2023_Wheat_Airly_Summary.xlsx"
 
 
+def optimize_init_solution(row_vals, max_lots, target_val):
+    sorted_val_inds = sorted([(row_vals[a], a) for a in np.arange(len(row_vals))], reverse=True)  # Default ascending
+    final_groups = []
+    max_group_size = len(row_vals) // max_lots + 2
+    while len(sorted_val_inds) > 0:
+        final_groups.append([sorted_val_inds[0]])
+        del sorted_val_inds[0]
+        while sum([val for val, _ in final_groups[-1]]) > target_val and len(final_groups[-1]) < max_group_size and len(sorted_val_inds) >= 1:
+            final_groups[-1].append(sorted_val_inds[-1])
+            del sorted_val_inds[-1]
+
+    opt_individual = []
+    for a in range(len(final_groups)):
+        for value in final_groups[a]:
+            opt_individual.append((value[1], a if a < max_lots else max_lots - 1))
+
+    return opt_individual
+
+
 def greatest_closest_power(target_val, power_of=2):
     closest_val = power_of
     while target_val > closest_val * power_of:
@@ -59,7 +78,10 @@ def min_field_count_make_individual(row_vals, max_lots, min_field_count):
     return individual
 
 
-def make_individual(row_vals, max_lots):
+def make_individual(row_vals, max_lots, optimized=True):
+    if optimized:
+        return optimize_init_solution(row_vals, max_lots, 0)
+
     indices = np.arange(len(row_vals))
     random_integers = np.random.randint(0, max_lots, size=len(row_vals))
     return list(zip(indices, random_integers))

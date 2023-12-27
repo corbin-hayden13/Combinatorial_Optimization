@@ -275,8 +275,8 @@ def run_genetic_algorithm(vals_to_optimize, max_lots, target_val=0, min_field_co
                                             individual_mutation_chance=individual_mutation_chance,
                                             gene_mutation_chance=gene_mutation_chance)
         best_individual = max(init_population, key=lambda individual: fitness(vals_to_optimize, individual, target_val))
-        if fitness(vals_to_optimize, best_individual, target_val) == 1000000:
-            if verbose: print(f"Algorithm converged perfectly before hitting max generation")
+        if (np.array([sums for _, sums in evaluate_individual(best_individual, vals_to_optimize).items()]) < 0).all():
+            if verbose: print(f"Algorithm converged before hitting max generation")
 
             return best_individual
 
@@ -446,7 +446,7 @@ def main():
     params_dict = {
         "max_lots": 5,
         "target_val": 0,
-        "number_generations": 300,
+        "number_generations": 30,
         "individual_mutation_chance": 0.3,
         "gene_mutation_chance": 0.15,
         "multithreaded": False,
@@ -503,14 +503,14 @@ def optimize_test_data():
         "max_lots": 10,
         "target_val": 0,
         "number_generations": 30,
-        "individual_mutation_chance": 1,
-        "gene_mutation_chance": 0.15,
+        "individual_mutation_chance": 0.45,
+        "gene_mutation_chance": 0.5,
         "multithreaded": True,
         "verbose": True
     }
 
     ga_opt = GAOptimizer()
-    ga_opt.load_test_data(test_size=1000)
+    ga_opt.load_test_data(test_size=1000, min_bound=-22000, max_bound=11000, percent_negative=0.15)
     best_individual = ga_opt.optimize_for(hyper_parameters=params_dict)
     print(evaluate_individual(best_individual, ga_opt.evaluated_column))
 
