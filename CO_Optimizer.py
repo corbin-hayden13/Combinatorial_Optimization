@@ -27,14 +27,6 @@ def optimize_init_solution(row_vals, max_lots, target_val):
     return opt_individual
 
 
-def greatest_closest_power(target_val, power_of=2):
-    closest_val = power_of
-    while target_val > closest_val * power_of:
-        closest_val *= power_of
-
-    return closest_val
-
-
 def scaled_sigmoid(score, min_bound=-10, max_bound=10, k_steepness=0.0001, x0_sigmoid_midpoint=0):
     """
     k_steepness: Closer to 0, more gradual approach to min / max is to accommodate for very high values

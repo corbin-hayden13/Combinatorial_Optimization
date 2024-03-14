@@ -1,12 +1,9 @@
 import numpy as np
 import random
 from copy import deepcopy
-from time import time
 from threading import Thread
-from multiprocessing import Process
-from CO_Optimizer import Optimizer, grain_flow_path, wheat_supply_path,\
-     vector_from_dataframe_column, make_population, fitness, evaluate_individual, make_individual,\
-     clone_individual
+from CO_Optimizer import Optimizer, wheat_supply_path, vector_from_dataframe_column, make_population, fitness,\
+    evaluate_individual, make_individual, clone_individual
 
 
 def non_threaded_tournament_selection(row_vals, population, target_val, t_size=4):
