@@ -259,7 +259,7 @@ def mutate_population(population, max_lots, min_field_count=-1, individual_mutat
 
 
 def run_genetic_algorithm(vals_to_optimize, max_lots, target_val=0, min_field_count=-1,
-                          population_size=100, min_generations=10, num_generations=1000,
+                          population_size=100, min_generations=10, num_generations=1000, allow_early_convergence=True,
                           individual_mutation_chance=1, gene_mutation_chance=0.5,
                           verbose=False, multithreaded=False, override_population=None):
     if override_population is None: init_population = make_population(vals_to_optimize, max_lots,
@@ -276,7 +276,7 @@ def run_genetic_algorithm(vals_to_optimize, max_lots, target_val=0, min_field_co
                                             gene_mutation_chance=gene_mutation_chance)
         best_individual = max(init_population, key=lambda individual: fitness(vals_to_optimize, individual, target_val))
         if (np.array([sums for _, sums in evaluate_individual(best_individual, vals_to_optimize).items()]) < 0).all()\
-                and a >= min_generations:
+                and a >= min_generations and allow_early_convergence:
             if verbose: print(f"Algorithm converged before hitting max generation")
 
             return best_individual
@@ -348,6 +348,7 @@ class GAOptimizer(Optimizer):
             "population_size": 100,
             "min_generations": 10,
             "number_generations": 500,
+            "allow_early_convergence": True,
             "individual_mutation_chance": 1,
             "gene_mutation_chance": 0.5,
             "multithreaded": True,
@@ -396,6 +397,7 @@ class GAOptimizer(Optimizer):
                                                 population_size=default_parameters["population_size"],
                                                 min_generations=default_parameters["min_generations"],
                                                 num_generations=default_parameters["number_generations"],
+                                                allow_early_convergence=default_parameters["allow_early_convergence"],
                                                 individual_mutation_chance=default_parameters["individual_mutation_chance"],
                                                 gene_mutation_chance=default_parameters["gene_mutation_chance"],
                                                 verbose=default_parameters["verbose"],
@@ -451,78 +453,21 @@ def main():
         "target_val": 0,
         "min_generations": 3,
         "number_generations": 30,
+        "allow_early_convergence": False,
         "individual_mutation_chance": 0.3,
         "gene_mutation_chance": 0.15,
         "multithreaded": False,
-        "verbose": True
+        "verbose": True,
     }
     optimizer = GAOptimizer(max_column=41)
     optimizer.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
-    """
-    Optimal hyperparemeters:
-     - individual_mutation_chance = 0.3, gene_mutation_chance = 0.15 @ max_lots=5
-    """
     best_individual = optimizer.optimize_for(hyper_parameters=params_dict)
-    # optimizer.to_csv("EnviroSpec vision EIM 2023-12-09.csv")
-    # optimizer.to_csv("testing_min_field_count.csv")
+
     print(best_individual)
     print(evaluate_individual(best_individual, optimizer.evaluated_column))
     print(optimizer.individual_to_dict(best_individual, sort_keys=True))
 
 
-def time_trial():
-    optimizer = GAOptimizer(max_column=41)
-    optimizer.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
-
-    params_dict = {
-        "max_lots": 5,
-        "target_val": 0,
-        "number_generations": 850,
-        "individual_mutation_chance": 0.3,
-        "gene_mutation_chance": 0.15,
-        "multithreaded": True,
-        "verbose": True
-    }
-    start_time = time()
-    best_individual = optimizer.optimize_for(hyper_parameters=params_dict)
-    print(evaluate_individual(best_individual, optimizer.evaluated_column))
-    print(f"Threaded Fit Time: {time() - start_time} seconds")
-
-    params_dict["multithreaded"] = False
-    start_time = time()
-    best_individual = optimizer.optimize_for(hyper_parameters=params_dict)
-    print(evaluate_individual(best_individual, optimizer.evaluated_column))
-    print(f"Regular Fit Time: {time() - start_time} seconds")
-
-
-def plot():
-    optimizer = GAOptimizer(max_column=41)
-    optimizer.import_data(wheat_supply_path, workbook="EnviroSpec Vision data Table", header_row=2)
-    print(optimizer.vectorize_column(col=37))
-    optimizer.graph_data(col=37)
-
-
-def optimize_test_data():
-    params_dict = {
-        "max_lots": 10,
-        "target_val": 0,
-        "min_generations": 3,
-        "number_generations": 30,
-        "individual_mutation_chance": 0.45,
-        "gene_mutation_chance": 0.5,
-        "multithreaded": True,
-        "verbose": True
-    }
-
-    ga_opt = GAOptimizer()
-    ga_opt.load_test_data(test_size=1000, min_bound=-22000, max_bound=11000, percent_negative=0.15)
-    best_individual = ga_opt.optimize_for(hyper_parameters=params_dict)
-    print(evaluate_individual(best_individual, ga_opt.evaluated_column))
-
-
 if __name__ == "__main__":
     main()
-    # time_trial()
-    # plot()
-    # optimize_test_data()
 
