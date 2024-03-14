@@ -1,2 +1,2 @@
-# Airly_Combinatorial_Optimization
+# Combinatorial_Optimization
 Solving a combinatorial optimization problem with AI
